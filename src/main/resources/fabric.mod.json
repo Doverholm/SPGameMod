@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "spgamemod",
+	"version": "${version}",
+	"name": "SPGameMod",
+	"description": "Hjälpmod för SP servern",
+	"authors": [
+		"Martin Doverholm",
+		"Charlie Doverholm"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/spgamemod/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.doverholm.SPGameMod"
+		],
+		"fabric-datagen": [
+			"net.doverholm.SPGameModDataGenerator"
+		],
+		"client": [
+			"net.doverholm.SPGameModClient"
+		]
+	},
+	"mixins": [
+		"spgamemod.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
