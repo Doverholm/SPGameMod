@@ -3,9 +3,14 @@ package net.doverholm;
 import net.doverholm.util.CountdownManager;
 import net.fabricmc.api.ModInitializer;
 
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.*;
 import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 import org.slf4j.Logger;
@@ -30,7 +35,7 @@ public class SPGameMod implements ModInitializer {
 			Objective board = scoreboard.addObjective(
 					"board",
 					ObjectiveCriteria.DUMMY,
-					Component.literal("§eVälkommen till servern"),
+					Component.literal("§eSeason 1 Java"),
 					ObjectiveCriteria.RenderType.INTEGER,
 					true,
 					null
@@ -48,11 +53,7 @@ public class SPGameMod implements ModInitializer {
 
 			scoreboard.addPlayerToTeam(COUNTDOWN_ENTRY, team);
 			scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(COUNTDOWN_ENTRY), board).set(8);
-
-			//scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(CountdownManager.getFormattedTimeLeft()), board).set(8);
 		});
-
-
 
 		ServerTickEvents.END_SERVER_TICK.register((server -> {
 			tick++;
@@ -69,5 +70,20 @@ public class SPGameMod implements ModInitializer {
 				tick = 0;
 			}
 		}));
+
+		ServerPlayerEvents.JOIN.register(player -> {
+			String playerName = player.getName().getString();
+			String message = "§7Välkommen §6" + playerName + "!";
+
+			player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("Season 1 Java")));
+
+			player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(message)));
+
+			player.connection.send(
+				new ClientboundSetTitlesAnimationPacket(
+						30, 70, 20
+				)
+			);
+		});
 	}
 }
