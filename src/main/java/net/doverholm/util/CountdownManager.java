@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 public class CountdownManager {
     private static boolean passed = false;
+    private static String lastString;
 
     public static String getFormattedTimeLeft() {
         LocalDateTime now = LocalDateTime.now();
@@ -39,6 +40,9 @@ public class CountdownManager {
         long minutes = seconds / 60;
         seconds %= 60;
 
-        return days + "d, " + hours + "h, " + minutes + "m, " + seconds + "s";
+        String text = days + "d, " + hours + "h, " + minutes + "m, " + seconds + "s";
+        lastString = text;
+
+        return text;
     }
 }
