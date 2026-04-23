@@ -1,9 +1,11 @@
-package net.doverholm.spmod.rank;
+package net.doverholm.rank;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 
 import java.io.*;
+import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +13,7 @@ import java.util.UUID;
 public class RankManager {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Type RANK_MAP_TYPE = new TypeToken<Map<String, String>>() {}.getType();
     private static final File FILE = new File("config/ranks.json");
 
     private static Map<String, String> ranks = new HashMap<>();
@@ -18,13 +21,16 @@ public class RankManager {
     public static void load() {
         try {
             if (!FILE.exists()) {
-                FILE.getParentFile().mkdirs();
+                File parent = FILE.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
                 save();
                 return;
             }
 
             FileReader reader = new FileReader(FILE);
-            Map<String, String> data = GSON.fromJson(reader, Map.class);
+            Map<String, String> data = GSON.fromJson(reader, RANK_MAP_TYPE);
             reader.close();
 
             if (data != null) {
@@ -47,7 +53,12 @@ public class RankManager {
     }
 
     public static Rank getRank(UUID uuid) {
-        return Rank.valueOf(ranks.getOrDefault(uuid.toString(), "PLAYER"));
+        String storedRank = ranks.getOrDefault(uuid.toString(), Rank.PLAYER.name());
+        try {
+            return Rank.valueOf(storedRank);
+        } catch (IllegalArgumentException ignored) {
+            return Rank.PLAYER;
+        }
     }
 
     public static void setRank(UUID uuid, Rank rank) {

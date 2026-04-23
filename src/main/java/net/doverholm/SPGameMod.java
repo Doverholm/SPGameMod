@@ -1,139 +1,146 @@
 package net.doverholm;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
+import net.doverholm.rank.Rank;
+import net.doverholm.rank.RankManager;
 import net.doverholm.util.CountdownManager;
+import net.doverholm.util.NameTagUtil;
 import net.fabricmc.api.ModInitializer;
-
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.scores.*;
+import net.minecraft.world.scores.DisplaySlot;
+import net.minecraft.world.scores.Objective;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.ScoreHolder;
+import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SPGameMod implements ModInitializer {
-	public static final String MOD_ID = "spgamemod";
-	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+    public static final String MOD_ID = "spgamemod";
+    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-	private int tick = 0;
+    private static final String COUNTDOWN_ENTRY = "\u00A77\u00A7k\u00A70";
+    private int tick;
 
-	private static final String COUNTDOWN_ENTRY = "§7§k§0";
+    @Override
+    public void onInitialize() {
+        RankManager.load();
 
-	@Override
-	public void onInitialize() {
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            Scoreboard scoreboard = server.getScoreboard();
 
-		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			Scoreboard scoreboard = server.getScoreboard();
+            Objective existing = scoreboard.getObjective("board");
+            if (existing != null) {
+                scoreboard.removeObjective(existing);
+            }
 
-			Objective existing = scoreboard.getObjective("board");
-			if (existing != null) scoreboard.removeObjective(existing);
-			Objective board = scoreboard.addObjective(
-					"board",
-					ObjectiveCriteria.DUMMY,
-					Component.literal("§eSeason 1 Java"),
-					ObjectiveCriteria.RenderType.INTEGER,
-					true,
-					null
-			);
-			scoreboard.setDisplayObjective(DisplaySlot.SIDEBAR, board);
+            Objective board = scoreboard.addObjective(
+                    "board",
+                    ObjectiveCriteria.DUMMY,
+                    Component.literal("\u00A7eSeason 1 Java"),
+                    ObjectiveCriteria.RenderType.INTEGER,
+                    true,
+                    null
+            );
+            scoreboard.setDisplayObjective(DisplaySlot.SIDEBAR, board);
 
-			scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly("§0"), board).set(10);
-			scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(" Purge slutar om:"), board).set(9);
+            scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly("\u00A70"), board).set(10);
+            scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(" Purge slutar om:"), board).set(9);
 
-			PlayerTeam team = scoreboard.getPlayerTeam("countdownTeam");
-			if (team == null) {
-				team = scoreboard.addPlayerTeam("countdownTeam");
-				team.setDisplayName(Component.literal(" "));
-			}
+            PlayerTeam countdownTeam = scoreboard.getPlayerTeam("countdownTeam");
+            if (countdownTeam == null) {
+                countdownTeam = scoreboard.addPlayerTeam("countdownTeam");
+                countdownTeam.setDisplayName(Component.literal(" "));
+            }
 
-			scoreboard.addPlayerToTeam(COUNTDOWN_ENTRY, team);
-			scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(COUNTDOWN_ENTRY), board).set(8);
-		});
+            scoreboard.addPlayerToTeam(COUNTDOWN_ENTRY, countdownTeam);
+            scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(COUNTDOWN_ENTRY), board).set(8);
+        });
 
-		ServerTickEvents.END_SERVER_TICK.register((server -> {
-			tick++;
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            tick++;
 
-			if (tick >= 20) {
-				Scoreboard scoreboard = server.getScoreboard();
-				PlayerTeam team = scoreboard.getPlayerTeam("countdownTeam");
+            if (tick < 20) {
+                return;
+            }
 
-				if (team != null) {
-					team.setPlayerPrefix(Component.literal(" "));
-					team.setPlayerSuffix(Component.literal(CountdownManager.getFormattedTimeLeft()));
-				}
+            Scoreboard scoreboard = server.getScoreboard();
+            PlayerTeam countdownTeam = scoreboard.getPlayerTeam("countdownTeam");
+            if (countdownTeam != null) {
+                countdownTeam.setPlayerPrefix(Component.literal(" "));
+                countdownTeam.setPlayerSuffix(Component.literal(CountdownManager.getFormattedTimeLeft()));
+            }
 
-				tick = 0;
-			}
-		}));
+            tick = 0;
+        });
 
-		ServerPlayerEvents.JOIN.register(player -> {
-			String playerName = player.getName().getString();
-			String message = "§7Välkommen §6" + playerName + "!";
+        ServerPlayerEvents.JOIN.register(player -> {
+            showJoinTitle(player);
+            NameTagUtil.updateName(player);
+        });
 
-			player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("Season 1 Java")));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+                NameTagUtil.updateName(handler.getPlayer()));
 
-			player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(message)));
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+                dispatcher.register(Commands.literal("setrank")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .then(Commands.argument("rank", StringArgumentType.word())
+                                        .executes(context -> {
+                                            ServerPlayer target = EntityArgument.getPlayer(context, "player");
+                                            String rankName = StringArgumentType.getString(context, "rank");
 
-			player.connection.send(
-				new ClientboundSetTitlesAnimationPacket(
-						30, 70, 20
-				)
-			);
-		});
+                                            Rank rank;
+                                            try {
+                                                rank = Rank.valueOf(rankName.toUpperCase());
+                                            } catch (IllegalArgumentException exception) {
+                                                context.getSource().sendFailure(Component.literal(
+                                                        "Unknown rank. Use PLAYER, TESTER, MODERATOR, ADMIN, or DEVELOPER."
+                                                ));
+                                                return 0;
+                                            }
 
-		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-			dispatcher.register(CommandManager.literal("setrank")
-					.requires(src -> src.hasPermissionLevel(2))
-					.then(CommandManager.argument("player", EntityArgumentType.player())
-							.then(CommandManager.argument("rank", StringArgumentType.word())
-									.executes(context -> {
+                                            RankManager.setRank(target.getUUID(), rank);
+                                            NameTagUtil.updateName(target);
 
-										ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-										String rankStr = StringArgumentType.getString(context, "rank");
+                                            context.getSource().sendSuccess(
+                                                    () -> Component.literal("Rank set for " + target.getName().getString()),
+                                                    true
+                                            );
+                                            return 1;
+                                        })))));
+    }
 
-										Rank rank = Rank.valueOf(rankStr.toUpperCase());
+    private static void showJoinTitle(ServerPlayer player) {
+        String playerName = player.getName().getString();
+        String message = "\u00A77Valkommen \u00A76" + playerName + "\u00A77!";
 
-										RankManager.setRank(target.getUuid(), rank);
-										NameTagUtil.updateName(target);
+        player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("Season 1 Java")));
+        player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(message)));
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(30, 70, 20));
+    }
 
-										context.getSource().sendFeedback(
-												() -> Text.literal("Rank satt!"), false
-										);
-
-										return 1;
-			}))));
-		});
-
-
-		ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
-
-			Rank rank = RankManager.getRank(sender.getUuid());
-
-			Text prefix = switch (rank) {
-				case ADMIN -> Text.literal("[ADMIN] ").formatted(Formatting.RED);
-				case MODERATOR -> Text.literal("[MOD] ").formatted(Formatting.BLUE);
-				default -> Text.literal("");
-			};
-
-			Text newMessage = Text.literal("")
-					.append(prefix)
-					.append(sender.getName())
-					.append(Text.literal(": "))
-					.append(message.getContent());
-
-			sender.getServer().getPlayerManager().broadcast(newMessage, false);
-
-			return false;
-		});
-
-
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			NameTagUtil.updateName(handler.getPlayer());
-		});
-	}
+    public static Component getRankPrefix(Rank rank) {
+        return switch (rank) {
+            case ADMIN -> Component.literal("[ADMIN] ").withStyle(ChatFormatting.RED);
+            case MODERATOR -> Component.literal("[MOD] ").withStyle(ChatFormatting.BLUE);
+            case DEVELOPER -> Component.literal("[DEV] ").withStyle(ChatFormatting.GOLD);
+            case TESTER -> Component.literal("[TESTER] ").withStyle(ChatFormatting.GREEN);
+            default -> Component.empty();
+        };
+    }
 }

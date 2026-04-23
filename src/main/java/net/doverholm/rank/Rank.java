@@ -1,7 +1,9 @@
-package net.doverholm.spmod.rank;
+package net.doverholm.rank;
 
 public enum Rank {
     PLAYER,
     MODERATOR,
-    ADMIN
+    ADMIN,
+    DEVELOPER,
+    TESTER
 }
