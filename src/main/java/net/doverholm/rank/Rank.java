@@ -5,5 +5,7 @@ public enum Rank {
     MODERATOR,
     ADMIN,
     DEVELOPER,
-    TESTER
+    TESTER,
+    OWNER,
+    DRAGONSLAYER
 }

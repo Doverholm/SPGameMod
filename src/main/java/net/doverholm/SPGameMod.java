@@ -109,7 +109,7 @@ public class SPGameMod implements ModInitializer {
                                                 rank = Rank.valueOf(rankName.toUpperCase());
                                             } catch (IllegalArgumentException exception) {
                                                 context.getSource().sendFailure(Component.literal(
-                                                        "Unknown rank. Use PLAYER, TESTER, MODERATOR, ADMIN, or DEVELOPER."
+                                                        "Unknown rank. Use PLAYER, TESTER, MODERATOR, ADMIN, DRAGONSLAYER or DEVELOPER."
                                                 ));
                                                 return 0;
                                             }
@@ -138,8 +138,10 @@ public class SPGameMod implements ModInitializer {
         return switch (rank) {
             case ADMIN -> Component.literal("[ADMIN] ").withStyle(ChatFormatting.RED);
             case MODERATOR -> Component.literal("[MOD] ").withStyle(ChatFormatting.BLUE);
-            case DEVELOPER -> Component.literal("[DEV] ").withStyle(ChatFormatting.GOLD);
+            case DEVELOPER -> Component.literal("[DEV] ").withStyle(ChatFormatting.DARK_BLUE);
             case TESTER -> Component.literal("[TESTER] ").withStyle(ChatFormatting.GREEN);
+            case OWNER -> Component.literal("[OWNER] ").withStyle(ChatFormatting.GOLD);
+            case DRAGONSLAYER -> Component.literal("[Dragon Slayer] ").withStyle(ChatFormatting.DARK_PURPLE);
             default -> Component.empty();
         };
     }
