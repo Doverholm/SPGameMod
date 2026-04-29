@@ -12,6 +12,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
@@ -19,6 +20,7 @@ import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerTeam;
@@ -90,39 +92,112 @@ public class SPGameMod implements ModInitializer {
         ServerPlayerEvents.JOIN.register(player -> {
             showJoinTitle(player);
             NameTagUtil.updateName(player);
+            applyRankPermissions(player);
         });
 
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
-                NameTagUtil.updateName(handler.getPlayer()));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            NameTagUtil.updateName(handler.getPlayer());
+            applyRankPermissions(handler.getPlayer());
+        });
 
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-                dispatcher.register(Commands.literal("setrank")
-                        .requires(source -> source.hasPermission(2))
-                        .then(Commands.argument("player", EntityArgument.player())
-                                .then(Commands.argument("rank", StringArgumentType.word())
-                                        .executes(context -> {
-                                            ServerPlayer target = EntityArgument.getPlayer(context, "player");
-                                            String rankName = StringArgumentType.getString(context, "rank");
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(Commands.literal("setrank")
+                    .requires(source -> source.hasPermission(2))
+                    .then(Commands.argument("player", EntityArgument.player())
+                            .then(Commands.argument("rank", StringArgumentType.word())
+                                    .executes(context -> {
+                                        ServerPlayer target = EntityArgument.getPlayer(context, "player");
+                                        String rankName = StringArgumentType.getString(context, "rank");
 
-                                            Rank rank;
-                                            try {
-                                                rank = Rank.valueOf(rankName.toUpperCase());
-                                            } catch (IllegalArgumentException exception) {
-                                                context.getSource().sendFailure(Component.literal(
-                                                        "Unknown rank. Use PLAYER, TESTER, MODERATOR, ADMIN, DRAGONSLAYER or DEVELOPER."
-                                                ));
-                                                return 0;
-                                            }
+                                        Rank rank;
+                                        try {
+                                            rank = Rank.valueOf(rankName.toUpperCase());
+                                        } catch (IllegalArgumentException exception) {
+                                            context.getSource().sendFailure(Component.literal(
+                                                    "Unknown rank. Use PLAYER, TESTER, MODERATOR, ADMIN, OWNER, DRAGONSLAYER or DEVELOPER."
+                                            ));
+                                            return 0;
+                                        }
 
-                                            RankManager.setRank(target.getUUID(), rank);
-                                            NameTagUtil.updateName(target);
+                                        RankManager.setRank(target.getUUID(), rank);
+                                        NameTagUtil.updateName(target);
+                                        applyRankPermissions(target);
 
-                                            context.getSource().sendSuccess(
-                                                    () -> Component.literal("Rank set for " + target.getName().getString()),
-                                                    true
-                                            );
-                                            return 1;
-                                        })))));
+                                        context.getSource().sendSuccess(
+                                                () -> Component.literal("Rank set for " + target.getName().getString()),
+                                                true
+                                        );
+                                        return 1;
+                                    }))));
+
+            dispatcher.register(Commands.literal("spectator")
+                    .requires(SPGameMod::canModerate)
+                    .executes(context -> setGameMode(context.getSource().getPlayerOrException(), GameType.SPECTATOR))
+                    .then(Commands.argument("player", EntityArgument.player())
+                            .executes(context -> setGameMode(EntityArgument.getPlayer(context, "player"), GameType.SPECTATOR))));
+
+            dispatcher.register(Commands.literal("survival")
+                    .requires(SPGameMod::canModerate)
+                    .executes(context -> setGameMode(context.getSource().getPlayerOrException(), GameType.SURVIVAL))
+                    .then(Commands.argument("player", EntityArgument.player())
+                            .executes(context -> setGameMode(EntityArgument.getPlayer(context, "player"), GameType.SURVIVAL))));
+
+            dispatcher.register(Commands.literal("modkick")
+                    .requires(SPGameMod::canModerate)
+                    .then(Commands.argument("player", EntityArgument.player())
+                            .executes(context -> kickPlayer(
+                                    EntityArgument.getPlayer(context, "player"),
+                                    Component.literal("Kicked by a moderator")
+                            ))
+                            .then(Commands.argument("reason", StringArgumentType.greedyString())
+                                    .executes(context -> kickPlayer(
+                                            EntityArgument.getPlayer(context, "player"),
+                                            Component.literal(StringArgumentType.getString(context, "reason"))
+                                    )))));
+        });
+    }
+
+    private static boolean canModerate(CommandSourceStack source) {
+        if (source.hasPermission(2)) {
+            return true;
+        }
+
+        if (source.getEntity() instanceof ServerPlayer player) {
+            return hasModeratorPermissions(RankManager.getRank(player.getUUID()));
+        }
+
+        return false;
+    }
+
+    private static boolean hasModeratorPermissions(Rank rank) {
+        return switch (rank) {
+            case MODERATOR, ADMIN, OWNER, DEVELOPER -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean shouldBeOperator(Rank rank) {
+        return switch (rank) {
+            case ADMIN, OWNER, DEVELOPER -> true;
+            default -> false;
+        };
+    }
+
+    private static void applyRankPermissions(ServerPlayer player) {
+        if (shouldBeOperator(RankManager.getRank(player.getUUID()))) {
+            player.server.getPlayerList().op(player.getGameProfile());
+        }
+    }
+
+    private static int setGameMode(ServerPlayer player, GameType gameType) {
+        player.setGameMode(gameType);
+        player.sendSystemMessage(Component.literal("Game mode set to " + gameType.getName()));
+        return 1;
+    }
+
+    private static int kickPlayer(ServerPlayer player, Component reason) {
+        player.connection.disconnect(reason);
+        return 1;
     }
 
     private static void showJoinTitle(ServerPlayer player) {
